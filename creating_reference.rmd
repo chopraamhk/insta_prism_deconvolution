@@ -1,0 +1,47 @@
+load libraries
+```{r}
+library(Seurat)
+library(SeuratDisk)
+```
+
+load raw gene expression counts
+```{r}
+gene_exp <- read.csv("salmon.merged.gene_counts.tsv", sep = "\t", row.names = 1)
+gene_exp <- gene_exp[, -1]
+gene_exp
+```
+
+load single cell h5ad file and extract healthy samples from ascending aorta
+```{r}
+ref_data <- readH5AD("GSE165824_ascending_descending_human_aorta_v1.h5ad")
+
+aoA_samples <- ref_data[, ref_data$biosample_id %in% c("Ao4A", "Ao8A", "Ao12A")]
+
+assayNames(aoA_samples)
+
+# extract counts - InstaPrism works on a Bayesian framework that looks for raw counts
+mtrx <- assay(aoA_samples, "cellranger_raw")
+
+# assign labels
+cell.types <- trimws(as.character(aoA_samples$cell_type_leiden))
+
+#found two unknown cell types - probably unassigned in previous publication - so keeping it as unknown 
+cell.types[cell.types %in% c("12. ?", "13. ?")] <- "Unknown"
+
+unique(cell.types)
+colnames(mtrx) <- cell.types
+
+ref_ao <- do.call(cbind, lapply(unique(cell.types), function(ct) {
+  Matrix::rowMeans(mtrx[, cell.types == ct, drop = FALSE])
+}))
+
+colnames(ref_ao) <- unique(cell.types)
+
+head(ref_ao)
+
+ref_ao_df <- as.data.frame(ref_ao)
+
+colnames(ref_ao_df) <- gsub("^[0-9]+\\.\\s*", "", colnames(ref_ao_df))
+
+write.table(ref_ao_df, "gene_celltype_ref_raw.txt", quote = FALSE, sep = "\t" )
+```
